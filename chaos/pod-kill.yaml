@@ -1,0 +1,19 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pedido-pod-kill
+  namespace: app
+  labels:
+    app.kubernetes.io/name: pedido
+    chaos-test: "true"
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - app
+    labelSelectors:
+      app: pedido
+  duration: "60s"
+  scheduler:
+    cron: "@every 5m"

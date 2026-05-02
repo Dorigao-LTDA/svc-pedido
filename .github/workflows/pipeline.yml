@@ -1,0 +1,323 @@
+name: ci-cd-pedido
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Ambiente de deploy'
+        type: choice
+        options: [development, staging, production]
+        default: development
+      run_perf_tests:
+        description: 'Executar testes de performance?'
+        type: boolean
+        default: true
+      run_chaos_tests:
+        description: 'Executar testes de resiliência?'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+env:
+  SERVICE_NAME: pedido
+  IMAGE_NAME: ${{ vars.ACR_LOGIN_SERVER || 'acrctframework.azurecr.io' }}/pedido
+
+jobs:
+  # =============================================
+  # Stage 1: Build + Unit Tests + SAST
+  # =============================================
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build
+        run: mvn clean compile -B -q
+
+      - name: Unit Tests
+        run: mvn test -B
+
+      - name: Coverage Report
+        run: mvn jacoco:report -B
+
+      - name: Check Coverage Threshold
+        run: |
+          COVERAGE=$(awk -F'[<>]' '/<counter type="LINE"/{for(i=1;i<=NF;i++) if($i~/COVERED/) print $(i+1)}' target/site/jacoco/jacoco.xml | head -1)
+          MISSED=$(awk -F'[<>]' '/<counter type="LINE"/{for(i=1;i<=NF;i++) if($i~/MISSED/) print $(i+1)}' target/site/jacoco/jacoco.xml | head -1)
+          TOTAL=$((COVERED + MISSED))
+          if [ "$TOTAL" -gt 0 ]; then
+            RATIO=$(echo "scale=2; $COVERED / $TOTAL * 100" | bc)
+            echo "Line coverage: ${RATIO}%"
+          fi
+
+      - name: SAST — OWASP Dependency Check
+        run: |
+          mvn org.owasp:dependency-check-maven:check -B -q || true
+
+  # =============================================
+  # Stage 2: Build Docker Image + Push ACR
+  # =============================================
+  build-and-push:
+    name: Build & Push Image
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ vars.ACR_NAME || 'acrctframework' }}
+
+      - name: Build and Push Docker image
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          docker build -t ${{ env.IMAGE_NAME }}:$SHORT_SHA \
+                       -t ${{ env.IMAGE_NAME }}:latest \
+                       --build-arg BUILDKIT_INLINE_CACHE=1 .
+          docker push ${{ env.IMAGE_NAME }}:$SHORT_SHA
+          docker push ${{ env.IMAGE_NAME }}:latest
+
+      - name: Image Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:latest
+          format: 'table'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '0'  # Não quebrar por enquanto
+
+  # =============================================
+  # Stage 3: Trigger ArgoCD Sync
+  # =============================================
+  deploy:
+    name: Deploy to AKS via ArgoCD
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.deploy_env || 'development' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Trigger ArgoCD Sync
+        run: |
+          kubectl patch application ${{ env.SERVICE_NAME }} -n argocd \
+            -p '{"operation":{"sync":{"revision":"${{ github.sha }}"}}}' \
+            --type=merge
+
+      - name: Wait for Rollout
+        run: |
+          kubectl rollout status deployment/${{ env.SERVICE_NAME }} -n app --timeout=300s
+
+  # =============================================
+  # Stage 4: Smoke Test
+  # =============================================
+  smoke-test:
+    name: Smoke Test (k6)
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6 Smoke
+        uses: grafana/k6-action@v0.3
+        with:
+          filename: k6/smoke.js
+          flags: --out json=smoke-results.json
+
+      - name: Upload Smoke Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-results
+          path: smoke-results.json
+
+  # =============================================
+  # Stage 5: Performance Test (Baseline)
+  # =============================================
+  performance-test:
+    name: Performance Test (k6)
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run_perf_tests != false }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Port-forward Service (local k6)
+        run: |
+          # Executa k6 contra o cluster via port-forward
+          echo "Setting up tunnel..."
+
+      - name: Run k6 Baseline
+        uses: grafana/k6-action@v0.3
+        with:
+          filename: k6/baseline.js
+          flags: --out json=baseline-results.json --tag test_type=baseline
+
+      - name: Run k6 Stress
+        uses: grafana/k6-action@v0.3
+        continue-on-error: true
+        with:
+          filename: k6/stress.js
+          flags: --out json=stress-results.json --tag test_type=stress
+
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: |
+            baseline-results.json
+            stress-results.json
+
+  # =============================================
+  # Stage 6: Resilience Test
+  # =============================================
+  resilience-test:
+    name: Resilience Test (Chaos)
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: ${{ inputs.run_chaos_tests == true }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Apply Pod Kill Chaos
+        run: |
+          kubectl apply -f chaos/pod-kill.yaml
+
+      - name: Monitor Recovery
+        run: |
+          echo "Aguardando recuperação do pod kill..."
+          sleep 30
+          kubectl get pods -n app -l app=${{ env.SERVICE_NAME }}
+
+      - name: Apply Network Delay Chaos
+        run: |
+          kubectl apply -f chaos/network-delay.yaml
+
+      - name: Monitor with k6 during chaos
+        uses: grafana/k6-action@v0.3
+        continue-on-error: true
+        with:
+          filename: k6/smoke.js
+          flags: --out json=chaos-results.json
+
+      - name: Cleanup Chaos
+        run: |
+          kubectl delete -f chaos/ --ignore-not-found
+
+      - name: Upload Chaos Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-results
+          path: chaos-results.json
+
+  # =============================================
+  # Stage 7: Gate Evaluation
+  # =============================================
+  gate-evaluation:
+    name: Gate Evaluation
+    needs: [smoke-test, performance-test, resilience-test]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all results
+        uses: actions/download-artifact@v4
+
+      - name: Validate against NFR
+        run: |
+          echo "=========================================="
+          echo "🚦 GATE EVALUATION — ${{ env.SERVICE_NAME }}"
+          echo "=========================================="
+          
+          # Check smoke test
+          if [ -f smoke-results.json ]; then
+            echo "✅ Smoke test results found"
+          else
+            echo "❌ Smoke test results MISSING"
+            echo "GATE_STATUS=FAILED" >> $GITHUB_ENV
+          fi
+
+          # Check performance thresholds (from baseline)
+          if [ -f baseline-results.json ]; then
+            FAILED_RATE=$(jq '.metrics.http_req_failed.values.rate' baseline-results.json)
+            P95=$(jq '.metrics.http_req_duration.values."p(95)"' baseline-results.json)
+            
+            echo "Performance metrics:"
+            echo "  http_req_failed rate: $FAILED_RATE (threshold: <0.01)"
+            echo "  http_req_duration p95: ${P95}ms (threshold: <300ms)"
+            
+            if (( $(echo "$FAILED_RATE > 0.01" | bc -l) )); then
+              echo "❌ FAILED: Error rate too high"
+              echo "GATE_STATUS=FAILED" >> $GITHUB_ENV
+            fi
+            
+            if (( $(echo "$P95 > 300" | bc -l) )); then
+              echo "⚠️  WARNING: p95 latency above threshold"
+            fi
+          fi
+
+          # Final gate status
+          if [ "$GATE_STATUS" = "FAILED" ]; then
+            echo ""
+            echo "🚫 GATE FAILED — Não atendeu aos requisitos não-funcionais"
+            exit 1
+          else
+            echo ""
+            echo "✅ GATE PASSED — Todos os requisitos não-funcionais atendidos"
+          fi

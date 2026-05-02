@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: NonFunctionalRequirements
+metadata:
+  name: pedido
+  description: "Requisitos não-funcionais do microserviço de Pedido"
+  version: "1.0.0"
+  owner: "time-pedido"
+
+performance:
+  http:
+    thresholds:
+      http_req_failed:
+        rate: 0.01         # < 1% de erro — gate crítico
+        gate: critical
+      http_req_duration:
+        p95: 300           # 95% das reqs < 300ms
+        p99: 800           # 99% das reqs < 800ms
+        gate: critical
+      throughput:
+        min: 50            # Mínimo 50 req/s em baseline
+        gate: warning
+
+  scenarios:
+    smoke:
+      description: "Validação rápida pós-deploy"
+      executor: "constant-vus"
+      duration: "1m"
+      vus: 1
+
+    baseline:
+      description: "Carga constante para medir baseline"
+      executor: "constant-vus"
+      duration: "5m"
+      vus: 10
+
+    stress:
+      description: "Rampa progressiva para encontrar ponto de quebra"
+      executor: "ramping-vus"
+      duration: "10m"
+      stages:
+        - target: 10
+          duration: "2m"
+        - target: 50
+          duration: "5m"
+        - target: 10
+          duration: "2m"
+        - target: 100
+          duration: "1m"
+
+    spike:
+      description: "Pico repentino de tráfego"
+      executor: "ramping-vus"
+      duration: "5m"
+      stages:
+        - target: 10
+          duration: "1m"
+        - target: 200
+          duration: "30s"
+        - target: 200
+          duration: "2m"
+        - target: 10
+          duration: "1m30s"
+
+resilience:
+  chaos_experiments:
+    - name: pedido-pod-kill
+      type: PodChaos
+      duration: "60s"
+      description: "Matar um pod aleatório e verificar recovery"
+      recovery_threshold: "30s"
+      
+    - name: pedido-network-delay
+      type: NetworkChaos
+      duration: "120s"
+      description: "Injetar latência de rede de 100ms"
+      delay: "100ms"
+      recovery_threshold: "10s"
+      
+    - name: pedido-pod-cpu-stress
+      type: StressChaos
+      duration: "60s"
+      description: "Estressar CPU de um pod"
+
+  sla:
+    availability: 99.5     # SLA % (mensal)
+    error_budget: 0.5      # Budget de erro %
+    recovery_time_target: 30  # RTO em segundos
+
+observability:
+  tracing:
+    enabled: true
+    sampler_ratio: 0.1     # 10% em produção
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+  logging:
+    level: "INFO"
+    format: "json"
+    structured: true
+
+resources:
+  defaults:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  
+  sizing_guide:
+    small:  # < 100 req/s
+      replicas: 2
+      requests: { cpu: "50m", memory: "128Mi" }
+      limits: { cpu: "200m", memory: "256Mi" }
+    medium: # 100-500 req/s
+      replicas: 3
+      requests: { cpu: "200m", memory: "256Mi" }
+      limits: { cpu: "500m", memory: "512Mi" }
+    large:  # > 500 req/s
+      replicas: 5
+      requests: { cpu: "500m", memory: "512Mi" }
+      limits: { cpu: "1000m", memory: "1024Mi" }
