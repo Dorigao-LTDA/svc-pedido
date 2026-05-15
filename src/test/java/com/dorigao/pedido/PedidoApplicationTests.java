@@ -1,6 +1,5 @@
 package com.dorigao.pedido;
 
-import com.dorigao.pedido.controller.PedidoController.CriarPedidoDtoRequest;
 import com.dorigao.pedido.service.PedidoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,8 +7,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
-
-import java.math.BigDecimal;
 
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -44,19 +41,18 @@ class PedidoApplicationTests {
         mockMvc.perform(get("/api/pedido"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(greaterThan(0))))
-                .andExpect(jsonPath("$[0].nome", notNullValue()))
-                .andExpect(jsonPath("$[0].id", notNullValue()));
+                .andExpect(jsonPath("$[0].id", notNullValue()))
+                .andExpect(jsonPath("$[0].itens", notNullValue()))
+                .andExpect(jsonPath("$[0].cliente", notNullValue()))
+                .andExpect(jsonPath("$[0].valorTotal", notNullValue()));
     }
 
     @Test
     void shouldCreatePedidoDto() throws Exception {
         String json = """
             {
-                "nome": "PedidoDto Teste",
-                "descricao": "Descrição do teste",
-                "preco": 99.90,
-                "categoria": "Testes",
-                "quantidadeEstoque": 10
+                "itens": ["Teclado Mecânico", "Mouse Gamer"],
+                "cliente": "João Silva"
             }
             """;
 
@@ -64,8 +60,8 @@ class PedidoApplicationTests {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.nome").value("PedidoDto Teste"))
-                .andExpect(jsonPath("$.preco").value(99.90))
+                .andExpect(jsonPath("$.itens", hasSize(2)))
+                .andExpect(jsonPath("$.cliente").value("João Silva"))
                 .andExpect(jsonPath("$.id", notNullValue()));
     }
 
