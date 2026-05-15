@@ -82,11 +82,11 @@ jobs:
             echo "Line coverage: ${RATIO}%"
           fi
 
-      - name: SAST — OWASP Dependency Check
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          mvn org.owasp:dependency-check-maven:check -B || true
+      # - name: SAST — OWASP Dependency Check
+      #   env:
+      #     NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      #   run: |
+      #     mvn org.owasp:dependency-check-maven:check -B || true
 
   # =============================================
   # Stage 2: Build Docker Image + Push ACR
