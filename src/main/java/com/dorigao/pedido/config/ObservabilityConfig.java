@@ -1,6 +1,7 @@
 package com.dorigao.pedido.config;
 
-import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.config.MeterFilter;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.context.annotation.Bean;
@@ -18,12 +19,11 @@ public class ObservabilityConfig {
     }
 
     @Bean
-    public MeterRegistryCustomizer meterRegistryCustomizer(MeterRegistry meterRegistry) {
-        return registry -> registry.config()
-                .commonTags(
-                    "application", "pedido",
-                    "service.name", "pedido",
-                    "service.namespace", "app"
-                );
+    public MeterFilter commonTagsFilter() {
+        return MeterFilter.commonTags(
+                Tags.of("application", "pedido",
+                        "service.name", "pedido",
+                        "service.namespace", "app")
+        );
     }
 }
