@@ -55,6 +55,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
+      - name: Cache OWASP Dependency Check database
+        uses: actions/cache@v4
+        with:
+          path: ~/.dependency-check
+          key: ${{ runner.os }}-dependency-check-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-dependency-check-
+
       - name: Build
         run: mvn clean compile -B -q
 
@@ -75,8 +83,10 @@ jobs:
           fi
 
       - name: SAST — OWASP Dependency Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
-          mvn org.owasp:dependency-check-maven:check -B -q || true
+          mvn org.owasp:dependency-check-maven:check -B || true
 
   # =============================================
   # Stage 2: Build Docker Image + Push ACR
