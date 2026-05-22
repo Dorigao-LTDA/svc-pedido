@@ -164,11 +164,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run k6 Smoke
-        uses: grafana/k6-action@v0.3.1
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
         with:
-          filename: k6/smoke.js
-          flags: --out json=smoke-results.json
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Port-forward to AKS
+        run: |
+          kubectl port-forward -n app svc/${{ env.SERVICE_NAME }} 8080:8080 &
+          sleep 3
+          curl -sf http://localhost:8080/health || echo "Warning: tunnel not ready yet"
+
+      - name: Run k6 Smoke
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e BASE_URL \
+            grafana/k6 run k6/smoke.js --out json=smoke-results.json
 
       - name: Upload Smoke Results
         uses: actions/upload-artifact@v4
@@ -187,23 +210,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Port-forward Service (local k6)
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set AKS Context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Port-forward to AKS
         run: |
-          # Executa k6 contra o cluster via port-forward
-          echo "Setting up tunnel..."
+          kubectl port-forward -n app svc/${{ env.SERVICE_NAME }} 8080:8080 &
+          sleep 3
+          curl -sf http://localhost:8080/health || echo "Warning: tunnel not ready yet"
 
       - name: Run k6 Baseline
-        uses: grafana/k6-action@v0.3.1
-        with:
-          filename: k6/baseline.js
-          flags: --out json=baseline-results.json --tag test_type=baseline
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e BASE_URL \
+            grafana/k6 run k6/baseline.js --out json=baseline-results.json --tag test_type=baseline
 
       - name: Run k6 Stress
-        uses: grafana/k6-action@v0.3.1
         continue-on-error: true
-        with:
-          filename: k6/stress.js
-          flags: --out json=stress-results.json --tag test_type=stress
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e BASE_URL \
+            grafana/k6 run k6/stress.js --out json=stress-results.json --tag test_type=stress
 
       - name: Upload Performance Results
         uses: actions/upload-artifact@v4
@@ -251,16 +296,27 @@ jobs:
         run: |
           kubectl apply -f chaos/network-delay.yaml
 
+      - name: Port-forward to AKS
+        run: |
+          kubectl port-forward -n app svc/${{ env.SERVICE_NAME }} 8080:8080 &
+          sleep 3
+          curl -sf http://localhost:8080/health || echo "Warning: tunnel not ready yet"
+
       - name: Monitor with k6 during chaos
-        uses: grafana/k6-action@v0.3.1
         continue-on-error: true
-        with:
-          filename: k6/smoke.js
-          flags: --out json=chaos-results.json
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          docker run --rm --network host \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e BASE_URL \
+            grafana/k6 run k6/smoke.js --out json=chaos-results.json
 
       - name: Cleanup Chaos
         run: |
           kubectl delete -f chaos/ --ignore-not-found
+          pkill -f "port-forward.*svc/${{ env.SERVICE_NAME }}" 2>/dev/null || true
 
       - name: Upload Chaos Results
         uses: actions/upload-artifact@v4
