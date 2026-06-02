@@ -371,19 +371,21 @@ jobs:
           echo "=========================================="
           echo "🚦 GATE EVALUATION — ${{ env.SERVICE_NAME }}"
           echo "=========================================="
-          
+
+          GATE_STATUS=PASSED
+
           # Check smoke test
-          if [ -f smoke-results.json ]; then
+          if [ -f smoke-results/smoke-results.json ]; then
             echo "✅ Smoke test results found"
           else
             echo "❌ Smoke test results MISSING"
-            echo "GATE_STATUS=FAILED" >> $GITHUB_ENV
+            GATE_STATUS=FAILED
           fi
 
           # Check performance thresholds (from baseline)
-          if [ -f baseline-results.json ]; then
-            FAILED_RATE=$(jq '.metrics.http_req_failed.values.rate' baseline-results.json)
-            P95=$(jq '.metrics.http_req_duration.values."p(95)"' baseline-results.json)
+          if [ -f perf-results/baseline-results.json ]; then
+            FAILED_RATE=$(tail -1 perf-results/baseline-results.json | jq -r '.metrics.http_req_failed.values.rate // 0')
+            P95=$(tail -1 perf-results/baseline-results.json | jq -r '.metrics.http_req_duration.values."p(95)" // 0')
             
             echo "Performance metrics:"
             echo "  http_req_failed rate: $FAILED_RATE (threshold: <0.01)"
@@ -391,12 +393,14 @@ jobs:
             
             if (( $(echo "$FAILED_RATE > 0.01" | bc -l) )); then
               echo "❌ FAILED: Error rate too high"
-              echo "GATE_STATUS=FAILED" >> $GITHUB_ENV
+              GATE_STATUS=FAILED
             fi
             
             if (( $(echo "$P95 > 300" | bc -l) )); then
               echo "⚠️  WARNING: p95 latency above threshold"
             fi
+          else
+            echo "⚠️  Performance results not available (skipped or failed)"
           fi
 
           # Final gate status
