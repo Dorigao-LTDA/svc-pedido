@@ -34,7 +34,7 @@ export const options = {
 };
 
 // IDs capturados para operações de GET
-let productIds = [];
+let pedidoIds = [];
 
 export default function () {
   // Operações de leitura (70%)
@@ -48,13 +48,13 @@ export default function () {
     // Extrair IDs para busca individual
     try {
       const ids = JSON.parse(listRes.body).map((p) => p.id);
-      if (ids.length > 0) productIds = ids.slice(0, 5);
+      if (ids.length > 0) pedidoIds = ids.slice(0, 5);
     } catch (e) { /* ignore */ }
   }
 
   // Busca por ID (15%)
-  if (productIds.length > 0 && Math.random() < 0.15) {
-    const id = productIds[Math.floor(Math.random() * productIds.length)];
+  if (pedidoIds.length > 0 && Math.random() < 0.15) {
+    const id = pedidoIds[Math.floor(Math.random() * pedidoIds.length)];
     const getRes = http.get(`${BASE_URL}/api/pedido/${id}`, { tags: { operation: 'get' } });
     endpointDurations.get.add(getRes.timings.duration);
     check(getRes, {
@@ -65,11 +65,8 @@ export default function () {
   // Criação (10%)
   if (Math.random() < 0.1) {
     const createRes = http.post(`${BASE_URL}/api/pedido`, JSON.stringify({
-      nome: `Produto ${Date.now()}`,
-      descricao: 'Produto de teste de carga',
-      preco: Math.random() * 1000 + 10,
-      categoria: 'Teste',
-      quantidadeEstoque: Math.floor(Math.random() * 100),
+      itens: [`Item ${Date.now()}`],
+      cliente: `Cliente ${Math.floor(Math.random() * 100)}`,
     }), {
       headers: { 'Content-Type': 'application/json' },
       tags: { operation: 'create' },
