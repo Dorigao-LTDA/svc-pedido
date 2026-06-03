@@ -397,10 +397,12 @@ jobs:
             fi
             
             if (( $(echo "$P95 > 300" | bc -l) )); then
-              echo "⚠️  WARNING: p95 latency above threshold"
+              echo "❌ FAILED: p95 latency above threshold"
+              GATE_STATUS=FAILED
             fi
           else
-            echo "⚠️  Performance results not available (skipped or failed)"
+            echo "❌ Performance results not available (skipped or failed)"
+            GATE_STATUS=FAILED
           fi
 
           # Final gate status
