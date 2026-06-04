@@ -144,6 +144,36 @@ jobs:
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
 
+      - name: Wait for ArgoCD
+        run: |
+          echo "Waiting for ArgoCD server to be ready..."
+          for i in $(seq 1 30); do
+            if kubectl get deployment argocd-server -n argocd &>/dev/null && \
+               kubectl rollout status deployment/argocd-server -n argocd --timeout=10s &>/dev/null; then
+              echo "ArgoCD server is ready"
+              exit 0
+            fi
+            echo "Attempt $i/30: ArgoCD not ready yet..."
+            sleep 10
+          done
+          echo "ERROR: ArgoCD server did not become ready after 5 minutes" >&2
+          exit 1
+
+      - name: Wait for Application
+        run: |
+          echo "Waiting for ArgoCD Application '${{ env.SERVICE_NAME }}' to exist..."
+          for i in $(seq 1 30); do
+            if kubectl get application ${{ env.SERVICE_NAME }} -n argocd &>/dev/null; then
+              echo "Application '${{ env.SERVICE_NAME }}' exists"
+              exit 0
+            fi
+            echo "Attempt $i/30: Application not found yet..."
+            sleep 10
+          done
+          echo "ERROR: Application '${{ env.SERVICE_NAME }}' not found after 5 minutes" >&2
+          echo "Ensure the root-app has synced and created the Application resource" >&2
+          exit 1
+
       - name: Trigger ArgoCD Sync
         run: |
           kubectl patch application ${{ env.SERVICE_NAME }} -n argocd \
