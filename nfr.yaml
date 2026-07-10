@@ -19,6 +19,9 @@ performance:
       throughput:
         min: 50            # Mínimo 50 req/s em baseline
         gate: warning
+      business_errors:
+        rate: 0.05         # < 5% erros de negócio
+        gate: critical
 
   scenarios:
     smoke:
@@ -26,12 +29,29 @@ performance:
       executor: "constant-vus"
       duration: "1m"
       vus: 1
+      thresholds:
+        http_req_failed:
+          rate: 0.05
+        http_req_duration:
+          p95: 1000
+        gate: warning
 
     baseline:
       description: "Carga constante para medir baseline"
       executor: "constant-vus"
       duration: "5m"
       vus: 10
+      thresholds:
+        http_req_failed:
+          rate: 0.01
+        http_req_duration:
+          p95: 300
+          p99: 800
+        http_reqs:
+          rate: 50
+        business_errors:
+          rate: 0.05
+        gate: critical
 
     stress:
       description: "Rampa progressiva para encontrar ponto de quebra"
@@ -46,6 +66,12 @@ performance:
           duration: "2m"
         - target: 100
           duration: "1m"
+      thresholds:
+        http_req_failed:
+          rate: 0.05
+        http_req_duration:
+          p99: 2000
+        gate: warning
 
     spike:
       description: "Pico repentino de tráfego"
@@ -60,6 +86,12 @@ performance:
           duration: "2m"
         - target: 10
           duration: "1m30s"
+      thresholds:
+        http_req_failed:
+          rate: 0.10
+        http_req_duration:
+          p99: 3000
+        gate: warning
 
 resilience:
   chaos_experiments:
