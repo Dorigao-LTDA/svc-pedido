@@ -194,6 +194,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone shared toolkit
+        run: |
+          git clone --depth 1 https://github.com/Dorigao-LTDA/ct-common.git /tmp/ct-common 2>/dev/null || {
+            echo "⚠️ ct-common repo unavailable, using local fallback"
+            mkdir -p /tmp/ct-common/scripts
+            cp scripts/nfr-to-env.py /tmp/ct-common/scripts/
+            cp scripts/evaluate-gates.py /tmp/ct-common/scripts/
+          }
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -221,16 +230,21 @@ jobs:
           echo "ERROR: Tunnel failed to become ready after 30s" >&2
           exit 1
 
+      - name: Generate k6 env from NFR
+        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+
       - name: Run k6 Smoke
         env:
           BASE_URL: http://localhost:8080
         run: |
+          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            grafana/k6 run k6/smoke.js --out json=smoke-results.json
+            $(env | grep '^K6_' | sed 's/^/-e /') \
+            grafana/k6 run perf/smoke.js --out json=smoke-results.json
 
       - name: Upload Smoke Results
         uses: actions/upload-artifact@v4
@@ -249,6 +263,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone shared toolkit
+        run: |
+          git clone --depth 1 https://github.com/Dorigao-LTDA/ct-common.git /tmp/ct-common 2>/dev/null || {
+            echo "⚠️ ct-common repo unavailable, using local fallback"
+            mkdir -p /tmp/ct-common/scripts
+            cp scripts/nfr-to-env.py /tmp/ct-common/scripts/
+            cp scripts/evaluate-gates.py /tmp/ct-common/scripts/
+          }
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -276,28 +299,35 @@ jobs:
           echo "ERROR: Tunnel failed to become ready after 30s" >&2
           exit 1
 
+      - name: Generate k6 env from NFR
+        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+
       - name: Run k6 Baseline
         env:
           BASE_URL: http://localhost:8080
         run: |
+          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            grafana/k6 run k6/baseline.js --out json=baseline-results.json --tag test_type=baseline
+            $(env | grep '^K6_' | sed 's/^/-e /') \
+            grafana/k6 run perf/baseline.js --out json=baseline-results.json --tag test_type=baseline
 
       - name: Run k6 Stress
         continue-on-error: true
         env:
           BASE_URL: http://localhost:8080
         run: |
+          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            grafana/k6 run k6/stress.js --out json=stress-results.json --tag test_type=stress
+            $(env | grep '^K6_' | sed 's/^/-e /') \
+            grafana/k6 run perf/stress.js --out json=stress-results.json --tag test_type=stress
 
       - name: Upload Performance Results
         uses: actions/upload-artifact@v4
@@ -318,6 +348,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone shared toolkit
+        run: |
+          git clone --depth 1 https://github.com/Dorigao-LTDA/ct-common.git /tmp/ct-common 2>/dev/null || {
+            echo "⚠️ ct-common repo unavailable, using local fallback"
+            mkdir -p /tmp/ct-common/scripts
+            cp scripts/nfr-to-env.py /tmp/ct-common/scripts/
+            cp scripts/evaluate-gates.py /tmp/ct-common/scripts/
+          }
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -331,15 +370,31 @@ jobs:
           resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
 
-      - name: Apply Pod Kill Chaos
-        run: |
-          kubectl apply -f chaos/pod-kill.yaml
+      - name: Generate k6 env from NFR
+        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
 
-      - name: Monitor Recovery
+      - name: Apply Pod Kill and Measure Recovery
         run: |
-          echo "Aguardando recuperação do pod kill..."
-          sleep 30
-          kubectl get pods -n app -l app=${{ env.SERVICE_NAME }}
+          CHAOS_START=$(date +%s%N)
+          kubectl apply -f chaos/pod-kill.yaml
+          # Wait for chaos duration
+          sleep 60
+          # Wait for recovery: poll until pod is 1/1 Running
+          while true; do
+            POD_STATUS=$(kubectl get pods -n app -l app=${{ env.SERVICE_NAME }} -o jsonpath='{.items[0].status.phase}' 2>/dev/null)
+            if [ "$POD_STATUS" = "Running" ]; then
+              READY=$(kubectl get pods -n app -l app=${{ env.SERVICE_NAME }} -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null)
+              if [ "$READY" = "true" ]; then break; fi
+            fi
+            NOW=$(date +%s%N)
+            ELAPSED=$(( (NOW - CHAOS_START) / 1000000000 ))
+            if [ $ELAPSED -gt 120 ]; then echo "Recovery timeout"; break; fi
+            sleep 2
+          done
+          CHAOS_END=$(date +%s%N)
+          RECOVERY_TIME=$(( (CHAOS_END - CHAOS_START) / 1000000000 - 60 ))
+          echo "Pod kill recovery time: ${RECOVERY_TIME}s"
+          echo "{\"pod-kill\": {\"recovery_time_seconds\": $RECOVERY_TIME}}" > chaos-recovery.json
 
       - name: Apply Network Delay Chaos
         run: |
@@ -364,12 +419,14 @@ jobs:
         env:
           BASE_URL: http://localhost:8080
         run: |
+          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            grafana/k6 run k6/smoke.js --out json=chaos-results.json
+            $(env | grep '^K6_' | sed 's/^/-e /') \
+            grafana/k6 run perf/smoke.js --out json=chaos-results.json
 
       - name: Cleanup Chaos
         run: |
@@ -380,7 +437,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chaos-results
-          path: chaos-results.json
+          path: |
+            chaos-results.json
+            chaos-recovery.json
 
   # =============================================
   # Stage 7: Gate Evaluation
@@ -393,54 +452,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clone shared toolkit
+        run: |
+          git clone --depth 1 https://github.com/Dorigao-LTDA/ct-common.git /tmp/ct-common 2>/dev/null || {
+            echo "⚠️ ct-common repo unavailable, using local fallback"
+            mkdir -p /tmp/ct-common/scripts
+            cp scripts/nfr-to-env.py /tmp/ct-common/scripts/
+            cp scripts/evaluate-gates.py /tmp/ct-common/scripts/
+          }
+
       - name: Download all results
         uses: actions/download-artifact@v4
 
       - name: Validate against NFR
         run: |
-          echo "=========================================="
-          echo "🚦 GATE EVALUATION — ${{ env.SERVICE_NAME }}"
-          echo "=========================================="
+          python3 /tmp/ct-common/scripts/evaluate-gates.py \
+            --artifacts . \
+            --nfr nfr.yaml \
+            --service ${{ env.SERVICE_NAME }}
 
-          GATE_STATUS=PASSED
-
-          # Check smoke test
-          if [ -f smoke-results/smoke-results.json ]; then
-            echo "✅ Smoke test results found"
-          else
-            echo "❌ Smoke test results MISSING"
-            GATE_STATUS=FAILED
-          fi
-
-          # Check performance thresholds (from baseline)
-          if [ -f perf-results/baseline-results.json ]; then
-            FAILED_RATE=$(tail -1 perf-results/baseline-results.json | jq -r '.metrics.http_req_failed.values.rate // 0')
-            P95=$(tail -1 perf-results/baseline-results.json | jq -r '.metrics.http_req_duration.values."p(95)" // 0')
-            
-            echo "Performance metrics:"
-            echo "  http_req_failed rate: $FAILED_RATE (threshold: <0.01)"
-            echo "  http_req_duration p95: ${P95}ms (threshold: <300ms)"
-            
-            if (( $(echo "$FAILED_RATE > 0.01" | bc -l) )); then
-              echo "❌ FAILED: Error rate too high"
-              GATE_STATUS=FAILED
-            fi
-            
-            if (( $(echo "$P95 > 300" | bc -l) )); then
-              echo "❌ FAILED: p95 latency above threshold"
-              GATE_STATUS=FAILED
-            fi
-          else
-            echo "❌ Performance results not available (skipped or failed)"
-            GATE_STATUS=FAILED
-          fi
-
-          # Final gate status
-          if [ "$GATE_STATUS" = "FAILED" ]; then
-            echo ""
-            echo "🚫 GATE FAILED — Não atendeu aos requisitos não-funcionais"
-            exit 1
-          else
-            echo ""
-            echo "✅ GATE PASSED — Todos os requisitos não-funcionais atendidos"
-          fi
+      - name: Upload Gate Summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-summary
+          path: gate-summary.json
