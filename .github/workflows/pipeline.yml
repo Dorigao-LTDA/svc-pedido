@@ -1,4 +1,4 @@
-name: ci-cd-pedido
+name: CI/CD Pipeline
 on:
   push:
     branches: [main]
