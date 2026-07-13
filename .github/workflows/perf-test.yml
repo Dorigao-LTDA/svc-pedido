@@ -1,0 +1,18 @@
+name: Performance Test Only
+on:
+  workflow_dispatch:
+    inputs:
+      run_stress_spike_tests:
+        type: boolean
+        default: false
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+jobs:
+  perf:
+    uses: Dorigao-LTDA/ct-common/.github/workflows/perf-test-only-reusable.yml@main
+    with:
+      service_name: pedido
+      run_stress_spike_tests: ${{ inputs.run_stress_spike_tests || false }}
+    secrets: inherit
