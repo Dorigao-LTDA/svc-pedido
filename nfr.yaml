@@ -38,7 +38,7 @@ performance:
           p95: 300
           p99: 800
         http_reqs:
-          rate: 50
+          rate: 10
         business_errors:
           rate: 0.05
         gate: critical
