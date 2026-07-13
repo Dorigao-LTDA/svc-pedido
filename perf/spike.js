@@ -9,10 +9,10 @@ const errors = new Rate('pedido_errors');
 
 function parseStages(envStr) {
   if (!envStr) return [
-    { duration: '1m', target: 10 },
+    { duration: '1m', target: 25 },
     { duration: '30s', target: 200 },
     { duration: '2m', target: 200 },
-    { duration: '1m30s', target: 10 },
+    { duration: '1m30s', target: 0 },
   ];
   try { return JSON.parse(envStr); } catch { return []; }
 }

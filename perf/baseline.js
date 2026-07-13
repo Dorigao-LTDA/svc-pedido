@@ -1,4 +1,4 @@
-// Baseline test — carga constante para medir performance baseline
+// Baseline test — ramping VUs até 25 para validar SLAs críticos
 // Thresholds and scenario params from __ENV (nfr.yaml via nfr-to-env.py)
 import http from 'k6/http';
 import { check, sleep } from 'k6';
@@ -21,6 +21,15 @@ const P99_THRESH = parseInt(__ENV.K6_BASELINE_THRESHOLD_P99 || 800);
 const THROUGHPUT_MIN = parseInt(__ENV.K6_BASELINE_THRESHOLD_THROUGHPUT || 50);
 const BIZ_ERR_RATE = parseFloat(__ENV.K6_BASELINE_THRESHOLD_BUSINESS_ERRORS || 0.05);
 
+function parseStages(envStr) {
+  if (!envStr) return [
+    { duration: '1m', target: 25 },
+    { duration: '3m', target: 25 },
+    { duration: '1m', target: 0 },
+  ];
+  try { return JSON.parse(envStr); } catch { return []; }
+}
+
 export const options = {
   thresholds: {
     http_req_failed: [`rate<${ERR_RATE}`],
@@ -30,9 +39,9 @@ export const options = {
   },
   scenarios: {
     baseline: {
-      executor: 'constant-vus',
-      vus: __ENV.K6_BASELINE_VUS ? parseInt(__ENV.K6_BASELINE_VUS) : 10,
-      duration: __ENV.K6_BASELINE_DURATION || '5m',
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: parseStages(__ENV.K6_BASELINE_STAGES),
       gracefulStop: '30s',
     },
   },

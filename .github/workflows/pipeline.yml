@@ -11,6 +11,10 @@ on:
         description: 'Executar testes de performance?'
         type: boolean
         default: true
+      run_stress_spike_tests:
+        description: 'Executar testes de stress e spike?'
+        type: boolean
+        default: false
       run_chaos_tests:
         description: 'Executar testes de resiliência?'
         type: boolean
@@ -231,19 +235,20 @@ jobs:
           exit 1
 
       - name: Generate k6 env from NFR
-        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+        run: |
+          python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+          sed 's/^export //' nfr-env.sh > /tmp/k6-env.txt
 
       - name: Run k6 Smoke
         env:
           BASE_URL: http://localhost:8080
         run: |
-          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            $(env | grep '^K6_' | sed 's/^/-e /') \
+            --env-file /tmp/k6-env.txt \
             grafana/k6 run perf/smoke.js --out json=smoke-results.json
 
       - name: Upload Smoke Results
@@ -257,9 +262,8 @@ jobs:
   # =============================================
   performance-test:
     name: Performance Test (k6)
-    needs: deploy
+    needs: [deploy, smoke-test]
     runs-on: ubuntu-latest
-    if: ${{ inputs.run_perf_tests != false }}
     steps:
       - uses: actions/checkout@v4
 
@@ -300,34 +304,49 @@ jobs:
           exit 1
 
       - name: Generate k6 env from NFR
-        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+        run: |
+          python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+          sed 's/^export //' nfr-env.sh > /tmp/k6-env.txt
 
       - name: Run k6 Baseline
         env:
           BASE_URL: http://localhost:8080
         run: |
-          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            $(env | grep '^K6_' | sed 's/^/-e /') \
+            --env-file /tmp/k6-env.txt \
             grafana/k6 run perf/baseline.js --out json=baseline-results.json --tag test_type=baseline
 
       - name: Run k6 Stress
+        if: ${{ inputs.run_stress_spike_tests == true }}
         continue-on-error: true
         env:
           BASE_URL: http://localhost:8080
         run: |
-          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            $(env | grep '^K6_' | sed 's/^/-e /') \
+            --env-file /tmp/k6-env.txt \
             grafana/k6 run perf/stress.js --out json=stress-results.json --tag test_type=stress
+
+      - name: Run k6 Spike
+        if: ${{ inputs.run_stress_spike_tests == true }}
+        continue-on-error: true
+        env:
+          BASE_URL: http://localhost:8080
+        run: |
+          docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e BASE_URL \
+            --env-file /tmp/k6-env.txt \
+            grafana/k6 run perf/spike.js --out json=spike-results.json --tag test_type=spike
 
       - name: Upload Performance Results
         uses: actions/upload-artifact@v4
@@ -336,13 +355,14 @@ jobs:
           path: |
             baseline-results.json
             stress-results.json
+            spike-results.json
 
   # =============================================
   # Stage 6: Resilience Test
   # =============================================
   resilience-test:
     name: Resilience Test (Chaos)
-    needs: deploy
+    needs: [deploy, smoke-test, performance-test]
     runs-on: ubuntu-latest
     if: ${{ inputs.run_chaos_tests == true }}
     steps:
@@ -371,7 +391,9 @@ jobs:
           cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
 
       - name: Generate k6 env from NFR
-        run: python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+        run: |
+          python3 /tmp/ct-common/scripts/nfr-to-env.py --nfr nfr.yaml --output nfr-env.sh --service ${{ env.SERVICE_NAME }}
+          sed 's/^export //' nfr-env.sh > /tmp/k6-env.txt
 
       - name: Apply Pod Kill and Measure Recovery
         run: |
@@ -419,13 +441,12 @@ jobs:
         env:
           BASE_URL: http://localhost:8080
         run: |
-          set -a; source nfr-env.sh; set +a
           docker run --rm --network host \
             --user "$(id -u):$(id -g)" \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -e BASE_URL \
-            $(env | grep '^K6_' | sed 's/^/-e /') \
+            --env-file /tmp/k6-env.txt \
             grafana/k6 run perf/smoke.js --out json=chaos-results.json
 
       - name: Cleanup Chaos

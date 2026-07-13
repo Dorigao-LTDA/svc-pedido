@@ -3,7 +3,7 @@
 FALLBACK COPY — canonical version in Dorigao-LTDA/ct-common/scripts/evaluate-gates.py
 Pipeline clones ct-common first; falls back to this file if the repo is unreachable.
 
-Gate evaluation: read nfr.yaml + k6 test artifacts, validate gates.
+Gate evaluation: read nfr.yaml thresholds + k6 test artifacts, validate gates.
 Makes nfr.yaml the single source of truth for all threshold values.
 
 Usage: python3 scripts/evaluate-gates.py --artifacts <dir> --nfr nfr.yaml --service <name>

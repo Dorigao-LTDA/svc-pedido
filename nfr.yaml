@@ -37,10 +37,16 @@ performance:
         gate: warning
 
     baseline:
-      description: "Carga constante para medir baseline"
-      executor: "constant-vus"
+      description: "Carga com ramping VUs até 25 para validar SLAs críticos"
+      executor: "ramping-vus"
       duration: "5m"
-      vus: 10
+      stages:
+        - target: 25
+          duration: "1m"
+        - target: 25
+          duration: "3m"
+        - target: 0
+          duration: "1m"
       thresholds:
         http_req_failed:
           rate: 0.01
@@ -54,18 +60,18 @@ performance:
         gate: critical
 
     stress:
-      description: "Rampa progressiva para encontrar ponto de quebra"
+      description: "Rampa progressiva até 150 VUs para encontrar ponto de quebra"
       executor: "ramping-vus"
       duration: "10m"
       stages:
-        - target: 10
-          duration: "2m"
         - target: 50
-          duration: "5m"
-        - target: 10
           duration: "2m"
         - target: 100
-          duration: "1m"
+          duration: "3m"
+        - target: 150
+          duration: "3m"
+        - target: 0
+          duration: "2m"
       thresholds:
         http_req_failed:
           rate: 0.05
@@ -78,13 +84,13 @@ performance:
       executor: "ramping-vus"
       duration: "5m"
       stages:
-        - target: 10
+        - target: 25
           duration: "1m"
         - target: 200
           duration: "30s"
         - target: 200
           duration: "2m"
-        - target: 10
+        - target: 0
           duration: "1m30s"
       thresholds:
         http_req_failed:
