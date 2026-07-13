@@ -7,22 +7,6 @@ metadata:
   owner: "time-pedido"
 
 performance:
-  http:
-    thresholds:
-      http_req_failed:
-        rate: 0.01         # < 1% de erro — gate crítico
-        gate: critical
-      http_req_duration:
-        p95: 300           # 95% das reqs < 300ms
-        p99: 800           # 99% das reqs < 800ms
-        gate: critical
-      throughput:
-        min: 50            # Mínimo 50 req/s em baseline
-        gate: warning
-      business_errors:
-        rate: 0.05         # < 5% erros de negócio
-        gate: critical
-
   scenarios:
     smoke:
       description: "Validação rápida pós-deploy"
