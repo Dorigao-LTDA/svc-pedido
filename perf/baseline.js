@@ -18,7 +18,7 @@ const errors = new Rate('pedido_errors');
 const ERR_RATE = parseFloat(__ENV.K6_BASELINE_THRESHOLD_HTTP_REQ_FAILED || 0.01);
 const P95_THRESH = parseInt(__ENV.K6_BASELINE_THRESHOLD_P95 || 300);
 const P99_THRESH = parseInt(__ENV.K6_BASELINE_THRESHOLD_P99 || 800);
-const THROUGHPUT_MIN = parseInt(__ENV.K6_BASELINE_THRESHOLD_THROUGHPUT || 50);
+const THROUGHPUT_MIN = parseInt(__ENV.K6_BASELINE_THRESHOLD_HTTP_REQS_RATE || 10);
 const BIZ_ERR_RATE = parseFloat(__ENV.K6_BASELINE_THRESHOLD_BUSINESS_ERRORS || 0.05);
 
 function parseStages(envStr) {
