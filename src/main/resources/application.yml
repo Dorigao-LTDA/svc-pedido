@@ -43,7 +43,7 @@ management:
       path-mapping:
         health: health
         info: info
-        prometheus: metrics
+        prometheus: prometheus
   endpoint:
     health:
       probes:
