@@ -1,0 +1,25 @@
+name: Resilience Test Only
+on:
+  workflow_dispatch:
+    inputs:
+      chaos_experiments_filter:
+        description: 'Filtrar experimentos (vírgula separado, vazio = todos do nfr.yaml)'
+        type: string
+        default: ''
+        required: false
+      chaos_duration_seconds:
+        description: 'Duração máxima por experimento (segundos)'
+        type: number
+        default: 120
+        required: false
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  resilience:
+    uses: Dorigao-LTDA/ct-common/.github/workflows/resilience-test-only-reusable.yml@main
+    with:
+      service_name: pedido
+      chaos_experiments_filter: ${{ inputs.chaos_experiments_filter || '' }}
+      chaos_duration_seconds: ${{ inputs.chaos_duration_seconds || 120 }}
+    secrets: inherit
