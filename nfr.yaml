@@ -48,11 +48,11 @@ performance:
       executor: "ramping-vus"
       duration: "10m"
       stages:
-        - target: 50
+        - target: 500
           duration: "2m"
-        - target: 100
+        - target: 1000
           duration: "3m"
-        - target: 150
+        - target: 1500
           duration: "3m"
         - target: 0
           duration: "2m"
@@ -68,11 +68,11 @@ performance:
       executor: "ramping-vus"
       duration: "5m"
       stages:
-        - target: 25
+        - target: 250
           duration: "1m"
-        - target: 200
+        - target: 2000
           duration: "30s"
-        - target: 200
+        - target: 2500
           duration: "2m"
         - target: 0
           duration: "1m30s"
