@@ -1,7 +1,7 @@
 // Smoke test — validação rápida pós-deploy
 // Thresholds and scenario params from __ENV (nfr.yaml via nfr-to-env.py)
 import http from 'k6/http';
-import { check } from 'k6';
+import { check, sleep } from 'k6';
 
 const VUS = __ENV.K6_SMOKE_VUS ? parseInt(__ENV.K6_SMOKE_VUS) : 1;
 const DURATION = __ENV.K6_SMOKE_DURATION || '1m';
@@ -36,4 +36,8 @@ export default function () {
     cliente: 'Smoke Test Client',
   }), { headers: { 'Content-Type': 'application/json' } });
   check(create, { 'create status 201': (r) => r.status === 201 });
+
+  // ponytail: 1s sleep prevents k6 from hammering when port-forward drops —
+  // without it, connection refused triggers ~3000 req/s, flooding 12k+ log lines in 4s.
+  sleep(1);
 }
