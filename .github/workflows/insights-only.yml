@@ -1,0 +1,19 @@
+name: Insights Only
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Run ID da pipeline de onde baixar os artifacts (vazio = última run)'
+        type: string
+        default: ''
+        required: false
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  insights:
+    uses: Dorigao-LTDA/ct-common/.github/workflows/insights-only-reusable.yml@main
+    with:
+      service_name: pedido
+      source_run_id: ${{ inputs.source_run_id || '' }}
+    secrets: inherit
