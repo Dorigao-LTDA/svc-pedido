@@ -5,8 +5,8 @@ import { check, sleep } from 'k6';
 
 const VUS = __ENV.K6_SMOKE_VUS ? parseInt(__ENV.K6_SMOKE_VUS) : 1;
 const DURATION = __ENV.K6_SMOKE_DURATION || '1m';
-const THRESHOLD_FAILED = parseFloat(__ENV.K6_SMOKE_THRESHOLD_HTTP_REQ_FAILED || 0.05);
-const THRESHOLD_P95 = parseInt(__ENV.K6_SMOKE_THRESHOLD_P95 || 1000);
+const THRESHOLD_FAILED = parseFloat(__ENV.K6_SMOKE_THRESHOLD_HTTP_REQ_FAILED_RATE || 0.05);
+const THRESHOLD_P95 = parseInt(__ENV.K6_SMOKE_THRESHOLD_HTTP_REQ_DURATION_P95 || 1000);
 
 export const options = {
   vus: VUS,

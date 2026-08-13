@@ -17,8 +17,8 @@ function parseStages(envStr) {
   try { return JSON.parse(envStr); } catch { return []; }
 }
 
-const THRESHOLD_FAILED = parseFloat(__ENV.K6_SPIKE_THRESHOLD_HTTP_REQ_FAILED || 0.10);
-const THRESHOLD_P99 = parseInt(__ENV.K6_SPIKE_THRESHOLD_P99 || 3000);
+const THRESHOLD_FAILED = parseFloat(__ENV.K6_SPIKE_THRESHOLD_HTTP_REQ_FAILED_RATE || 0.10);
+const THRESHOLD_P99 = parseInt(__ENV.K6_SPIKE_THRESHOLD_HTTP_REQ_DURATION_P99 || 3000);
 
 export const options = {
   thresholds: {
