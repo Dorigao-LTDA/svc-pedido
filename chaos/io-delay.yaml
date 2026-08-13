@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: pedido-io-delay
+  namespace: app
+  labels:
+    app.kubernetes.io/name: pedido
+    chaos-test: "true"
+spec:
+  action: latency
+  mode: all
+  selector:
+    namespaces:
+      - app
+    labelSelectors:
+      app: pedido
+  volumePath: /data
+  path: /data/**
+  delay: "50ms"
+  percent: 100
+  duration: "60s"
+  scheduler:
+    cron: "@every 10m"

@@ -103,6 +103,29 @@ resilience:
       duration: "60s"
       description: "Estressar CPU de um pod"
 
+    - name: pedido-io-delay
+      type: IOChaos
+      duration: "60s"
+      description: "Injetar latência de I/O no filesystem"
+      action: "latency"
+      delay: "50ms"
+      recovery_threshold: "30s"
+
+    - name: pedido-dns-error
+      type: DNSChaos
+      duration: "60s"
+      description: "Induzir falha de resolução DNS"
+      action: "error"
+      recovery_threshold: "30s"
+
+    - name: pedido-http-abort
+      type: HTTPChaos
+      duration: "60s"
+      description: "Abortar requisições HTTP (5xx)"
+      action: "abort"
+      port: 8080
+      recovery_threshold: "30s"
+
   sla:
     availability: 99.5     # SLA % (mensal)
     error_budget: 0.5      # Budget de erro %
