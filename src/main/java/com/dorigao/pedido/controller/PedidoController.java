@@ -42,6 +42,8 @@ public class PedidoController {
     @PostMapping
     public ResponseEntity<PedidoDto> criar(@Valid @RequestBody CriarPedidoRequest request) {
         log.info("POST /api/pedido - itens={}, cliente={}", request.itens().size(), request.cliente());
+        // EXPERIMENTO 5: regressão combinada (latência) para testar correlação LLM
+        try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         var pedido = service.criar(request.itens(), request.cliente());
         return ResponseEntity.status(HttpStatus.CREATED).body(pedido);
     }
