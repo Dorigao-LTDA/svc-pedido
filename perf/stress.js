@@ -43,3 +43,15 @@ export default function () {
 
   sleep(0.5 + Math.random() * 2);
 }
+
+// handleSummary: writes aggregated summary JSON at test end (replaces --summary-export,
+// removed in k6 v0.48+). --out json writes NDJSON incrementally and gets extracted too early.
+export function handleSummary(data) {
+  const summary = { metrics: {} };
+  for (const [name, m] of Object.entries(data.metrics)) {
+    if (m && m.values) summary.metrics[name] = { values: m.values };
+  }
+  const json = JSON.stringify(summary);
+  const outFile = __ENV.K6_SUMMARY_FILE || '/output/summary.json';
+  return { stdout: json, [outFile]: json };
+}
