@@ -53,5 +53,9 @@ export function handleSummary(data) {
   }
   const json = JSON.stringify(summary);
   const outFile = __ENV.K6_SUMMARY_FILE || '/output/summary.json';
-  return { stdout: json, [outFile]: json };
+  // ponytail: goja (k6 JS runtime) does not support ES6 computed property names
+  // like { [outFile]: json }. Use explicit assignment instead.
+  const result = { stdout: json };
+  result[outFile] = json;
+  return result;
 }
