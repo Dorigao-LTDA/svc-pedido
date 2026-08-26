@@ -22,6 +22,12 @@ public class PedidoService {
 
     public List<PedidoDto> listarTodos() {
         log.debug("Listando todos os pedidos");
+        // simula latência de consulta ao banco de dados
+        try {
+            Thread.sleep(400);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         return new ArrayList<>(pedidos.values());
     }
 
