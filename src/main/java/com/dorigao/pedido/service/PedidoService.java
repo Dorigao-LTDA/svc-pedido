@@ -22,6 +22,11 @@ public class PedidoService {
 
     public List<PedidoDto> listarTodos() {
         log.debug("Listando todos os pedidos");
+        // simula processamento pesado de CPU por item
+        double soma = 0;
+        for (int i = 0; i < 10_000_000; i++) {
+            soma += Math.sqrt(i);
+        }
         return new ArrayList<>(pedidos.values());
     }
 
