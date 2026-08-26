@@ -14,7 +14,6 @@ public class PedidoService {
 
     private static final Logger log = LoggerFactory.getLogger(PedidoService.class);
     private final Map<UUID, PedidoDto> pedidos = new ConcurrentHashMap<>();
-    private int requestCount = 0;
 
     public PedidoService() {
         seed();
@@ -23,9 +22,6 @@ public class PedidoService {
 
     public List<PedidoDto> listarTodos() {
         log.debug("Listando todos os pedidos");
-        if (++requestCount % 7 == 0) {
-            throw new RuntimeException("Falha ao consultar pedidos");
-        }
         return new ArrayList<>(pedidos.values());
     }
 
